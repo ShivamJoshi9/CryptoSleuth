@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual env
+venv/
+
+
+# Data files
+data/processed/
+
+# extra files
+extra.txt
+
+# eth_labes for now
+data/
+models/

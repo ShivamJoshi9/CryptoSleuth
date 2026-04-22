@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>ChainSleuth Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+
+</head>
+
+<body class="bg-gray-100 text-gray-900">
+
+    <div class="flex">
+
+        <!-- Sidebar -->
+        <div class="w-64 bg-white min-h-screen p-6 shadow-md">
+            <a href="/reset" class="bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400 mb-4 inline-block">
+                Start New Investigation
+            </a>
+
+            <h2 class="text-xl font-bold mb-6">🔍 ChainSleuth</h2>
+
+            <p class="text-sm text-gray-500 mb-2">📍 Current Wallet</p>
+            <p class="text-xs break-all mb-4">{{ wallet }}</p>
+
+            <hr class="mb-4">
+
+            <p class="text-sm text-gray-500 mb-2">🧭 Path</p>
+
+            <button onclick="copyFullPath()"
+                class="mb-3 text-xs bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600">
+                📋 Copy Full Path
+            </button>
+
+            <div class="flex flex-col gap-2">
+                {% for addr in path %}
+                <div class="flex items-center gap-2">
+
+                    <a href="/select/{{ addr }}" title="{{ addr }}" class="block px-2 py-1 rounded text-xs font-mono break-all flex-1
+       {% if loop.last %}
+           bg-yellow-400 text-black font-bold
+       {% else %}
+           bg-gray-200 hover:bg-gray-300
+       {% endif %}">
+                        {{ addr }}
+                    </a>
+
+                    <!-- 🔥 COPY BUTTON -->
+                    <button onclick="copyText('{{ addr }}')"
+                        class="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600">
+                        📋
+                    </button>
+
+                </div>
+
+                <!-- 🔥 ARROW (FIXED POSITION) -->
+                {% if not loop.last %}
+                <div class="text-center text-gray-400 text-lg">↓</div>
+                {% endif %}
+
+                {% endfor %}
+            </div>
+
+        </div>
+
+        <!-- Main -->
+        <div class="flex-1 p-6">
+
+            <!-- Stats -->
+            <div class="grid grid-cols-3 gap-4 mb-6">
+
+                <div class="bg-white p-4 rounded-xl shadow">
+                    <p class="text-sm text-gray-500">Wallets</p>
+                    <p class="text-xl font-bold">{{ neighbors|length }}</p>
+                </div>
+
+                <div class="bg-white p-4 rounded-xl shadow">
+                    <p class="text-sm text-gray-500">Total ETH</p>
+                    <p class="text-xl font-bold">
+                        {{ neighbors.values() | map(attribute='value') | sum | round(2) }}
+                    </p>
+                </div>
+
+                <div class="bg-white p-4 rounded-xl shadow">
+                    <p class="text-sm text-gray-500">Transactions</p>
+                    <p class="text-xl font-bold">
+                        {{ neighbors.values() | map(attribute='count') | sum }}
+                    </p>
+                </div>
+
+            </div>
+
+            <!-- Search -->
+            <input id="searchInput" placeholder="Search wallet..." class="w-full p-3 border rounded-lg mb-4"
+                onkeyup="searchWallets()">
+
+            <!-- Wallet List -->
+            <div id="wallet-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+                {% for addr, data in neighbors.items() %}
+                <div class="wallet-card bg-white p-4 rounded-xl shadow hidden" data-address="{{ addr|lower }}">
+
+                    <p class="font-mono text-sm break-all mb-2">{{ addr }}</p>
+
+                    <div class="flex gap-3 text-sm mb-3">
+                        <span class="bg-green-100 text-green-700 px-2 py-1 rounded">
+                            💰 {{ "%.3f"|format(data.value) }} ETH
+                        </span>
+
+                        <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                            🔁 {{ data.count }} tx
+                        </span>
+                    </div>
+
+                    <a href="/select/{{ addr }}" class="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">
+                        Explore →
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Buttons -->
+            <div class="flex gap-4 mt-6">
+                <button onclick="loadMore()" class="bg-blue-500 text-white px-4 py-2 rounded">
+                    Load More
+                </button>
+
+                <button onclick="expandAll()" class="bg-gray-500 text-white px-4 py-2 rounded">
+                    Expand Full
+                </button>
+            </div>
+
+            <!-- Graph -->
+            <div class="bg-white p-6 rounded-xl shadow mt-6">
+                <h3 class="mb-4 font-semibold">📊 Transaction Graph</h3>
+                <div id="network" style="height: 400px;"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Wallet JS -->
+    <script>
+        let visibleCount = 15;
+        const allCards = Array.from(document.getElementsByClassName("wallet-card"));
+        let filteredCards = [...allCards];
+
+        function updateDisplay() {
+            allCards.forEach(c => c.classList.add("hidden"));
+            for (let i = 0; i < visibleCount && i < filteredCards.length; i++) {
+                filteredCards[i].classList.remove("hidden");
+            }
+        }
+
+        function loadMore() {
+            visibleCount += 15;
+            updateDisplay();
+        }
+
+        function expandAll() {
+            visibleCount = filteredCards.length;
+            updateDisplay();
+        }
+
+        function searchWallets() {
+            const q = document.getElementById("searchInput").value.toLowerCase();
+            filteredCards = allCards.filter(c => c.dataset.address.includes(q));
+            visibleCount = 100;
+            updateDisplay();
+        }
+
+        function copyText(text) {
+            navigator.clipboard.writeText(text);
+            alert("Copied!");
+        }
+
+        function copyFullPath() {
+            const path = {{ path | tojson | safe
+        }};
+        const fullPath = path.join(" → ");
+        navigator.clipboard.writeText(fullPath);
+        alert("Copied! Full path");
+}
+
+        window.onload = updateDisplay;
+    </script>
+
+    <!-- Graph JS -->
+    <script>
+        const rawNodes = {{ nodes| tojson }};
+        const rawEdges = {{ edges| tojson }};
+
+        // 🔥 Separate edges visually (fix thick issue)
+        // rawEdges.forEach((e, i) => {
+        //     e.smooth = {
+        //         type: i % 2 === 0 ? "curvedCW" : "curvedCCW",
+        //         roundness: 0.2 + (i * 0.05)
+        //     };
+        // });
+
+        // 🔥 Process nodes
+        const pathNodes = {{ path | tojson | safe }};
+        const exchangeNodes = {{ exchanges | tojson | safe }};
+
+        rawNodes.forEach(n => {
+
+            let ethValue = "";
+
+            rawEdges.forEach(e => {
+                if (e.to === n.id) {
+                    ethValue = e.value ? e.value.toFixed(2) + " ETH" : "";
+                }
+            });
+
+            const shortAddr = n.id.slice(0, 6) + "..." + n.id.slice(-4);
+
+            n.label = shortAddr + (ethValue ? "\n" + ethValue : "");
+            n.title = n.id;
+
+            if (exchangeNodes.includes(n.id)) {
+                n.color = "red";
+                n.size = 18;
+
+            } else if (pathNodes.includes(n.id)) {
+                n.color = "#f59e0b";
+                n.size = 14;
+
+            } else {
+                n.color = "#3b82f6";
+                n.size = 8;
+            }
+
+        });
+
+        const network = new vis.Network(
+            document.getElementById("network"),
+            {
+                nodes: rawNodes,
+                edges: rawEdges
+            },
+            {
+                nodes: {
+                    shape: "dot",
+                    font: { size: 11, align: "center" }
+                },
+
+                edges: {
+                    arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+                    width: 1.5,
+                    color: "#3b82f6",
+
+                    smooth: {
+                        enabled: true,
+                        type: "cubicBezier",
+                        forceDirection: "horizontal",
+                        roundness: 0.4
+                    }
+                },
+
+                physics: false,   // 🔥 no bouncing
+
+                interaction: {
+                    dragNodes: true,
+                    dragView: true,
+                    zoomView: true
+                }
+            }
+        );
+
+        network.on("click", function (params) {
+            if (params.nodes.length > 0) {
+                window.location.href = "/select/" + params.nodes[0];
+            }
+        });
+    </script>
+
+</body>
+
+</html>
